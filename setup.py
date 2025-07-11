@@ -1,3 +1,5 @@
+import os
+from glob import glob
 from setuptools import find_packages, setup
 
 package_name = "san_navistar_ros2"
@@ -18,6 +20,8 @@ setup(
     license="MIT",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [],
+        "console_scripts": [
+            "san_navistar_node = san_navistar_ros2.san_navistar_node:main"
+        ],
     },
 )
