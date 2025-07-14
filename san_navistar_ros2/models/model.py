@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from models.distributions import Bernoulli, Categorical, DiagGaussian
-from models.srnn_model import SRNN
-from models.STAR import STAR
-from src.utils import check
+from san_navistar_ros2.models.distributions import Bernoulli, Categorical, DiagGaussian
+from san_navistar_ros2.models.srnn_model import SRNN
+from san_navistar_ros2.models.STAR import STAR
+from san_navistar_ros2.utils import check
 
 
 class Flatten(nn.Module):
@@ -12,16 +12,18 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None, device='cpu'):
+    def __init__(
+        self, obs_shape, action_space, base=None, base_kwargs=None, device="cpu"
+    ):
         super(Policy, self).__init__()
         if base_kwargs is None:
             base_kwargs = {}
 
-        if base == 'srnn':
+        if base == "srnn":
             base = SRNN
             self.base = base(obs_shape, base_kwargs)
             self.srnn = True
-        elif base == 'star':
+        elif base == "star":
             base = STAR
             self.base = base(obs_shape, base_kwargs)
             self.star = True
@@ -63,15 +65,19 @@ class Policy(nn.Module):
 
         masks = check(masks).to(**self.tqdv)
 
-        if not hasattr(self, 'srnn'):
+        if not hasattr(self, "srnn"):
             self.srnn = False
-        if not hasattr(self, 'star'):
+        if not hasattr(self, "star"):
             self.star = False
 
         if self.srnn:
-            value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks, infer=True)
+            value, actor_features, rnn_hxs = self.base(
+                inputs, rnn_hxs, masks, infer=True
+            )
         elif self.star:
-            value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks, infer=True)
+            value, actor_features, rnn_hxs = self.base(
+                inputs, rnn_hxs, masks, infer=True
+            )
         else:
             value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
         dist = self.dist(actor_features)
@@ -80,7 +86,6 @@ class Policy(nn.Module):
             action = dist.mode()
         else:
             action = dist.sample()
-
 
         action_log_probs = dist.log_probs(action)
         dist_entropy = dist.entropy().mean()
@@ -114,6 +119,3 @@ class Policy(nn.Module):
         dist_entropy = dist.entropy().mean()
 
         return value, action_log_probs, dist_entropy, rnn_hxs
-
-
-
