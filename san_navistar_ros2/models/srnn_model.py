@@ -253,9 +253,12 @@ class EdgeAttention(nn.Module):
         self.num_attention_head = 1
 
     def att_func(self, temporal_embed, spatial_embed, h_spatials):
-        seq_len, nenv, num_edges, h_size = (
-            h_spatials.size()
-        )  # [1, 12, 30, 256] in testing,  [12, 30, 256] in training
+        (
+            seq_len,
+            nenv,
+            num_edges,
+            h_size,
+        ) = h_spatials.size()  # [1, 12, 30, 256] in testing,  [12, 30, 256] in training
         attn = temporal_embed * spatial_embed
         attn = torch.sum(attn, dim=3)
 

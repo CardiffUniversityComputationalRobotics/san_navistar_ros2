@@ -11,27 +11,33 @@ def _reshape(seq_len, env_num, x):
     elif len(x.shape) == 2:
         return x.reshape(seq_len, env_num, *x.shape[1:]).permute(1, 0, 2)
 
+
 def get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
+
 
 def initialize_weights(modules):
     for m in modules:
         if isinstance(m, nn.Conv2d):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if m.bias is not None: nn.init.constant_(m.bias, 0)
+            nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.BatchNorm2d):
             nn.init.constant_(m.weight, 1)
-            if m.bias is not None: nn.init.constant_(m.bias, 0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.Linear):
             nn.init.normal_(m.weight, 0, 0.01)
-            if m.bias is not None: nn.init.constant_(m.bias, 0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
-def get_masks(masks, device='cpu'):
+
+def get_masks(masks, device="cpu"):
     # [B, T, 1] -> [B, T, T]
     batch_size, time_len = masks.shape[0], masks.shape[1]
     zeros_masks = torch.zeros((batch_size, time_len, time_len)).to(device)
     attn_mask = torch.tril(torch.ones((batch_size, time_len, time_len)).to(device))
-    masks = masks.squeeze(-1).permute(1, 0) # [T, B * N]
+    masks = masks.squeeze(-1).permute(1, 0)  # [T, B * N]
     zero_index = (masks[1:] == 0).any(-1).nonzero().squeeze().cpu()
     if zero_index.dim() == 0:
         # Deal with scalar
@@ -42,25 +48,37 @@ def get_masks(masks, device='cpu'):
     # add t=0 and t=T to the list
     zero_index = [0] + zero_index + [time_len]
     for i in range(len(zero_index) - 1):
-        zeros_masks[:, zero_index[i]:zero_index[i + 1], zero_index[i]:zero_index[i + 1]] = 1
+        zeros_masks[
+            :, zero_index[i] : zero_index[i + 1], zero_index[i] : zero_index[i + 1]
+        ] = 1
 
     # limit the temporal attention length
     attention_num_limit = 5
     if time_len > attention_num_limit:
         limit_attention_num_mask = torch.triu(
-            torch.ones((batch_size, time_len - attention_num_limit, time_len - attention_num_limit)).to(device))
-        attn_mask[:, attention_num_limit:, :time_len - attention_num_limit] *= limit_attention_num_mask
+            torch.ones(
+                (
+                    batch_size,
+                    time_len - attention_num_limit,
+                    time_len - attention_num_limit,
+                )
+            ).to(device)
+        )
+        attn_mask[
+            :, attention_num_limit:, : time_len - attention_num_limit
+        ] *= limit_attention_num_mask
 
     attn_mask = (attn_mask * zeros_masks).to(device)
     return attn_mask
 
-def get_adj_matrix(x, device='cpu'):
+
+def get_adj_matrix(x, device="cpu"):
     # [B, N, 2]
     B, N, C = x.shape
-    x1 = torch.repeat_interleave(x, N, dim=1) # [B, N * N, C]
-    x2 = x.repeat(1, N, 1) # [B, N * N, C]
-    dis = torch.norm(x1 - x2, dim=-1) # [B, N * N]
-    dis = dis.reshape(B, N, N) # [B, N, N]
+    x1 = torch.repeat_interleave(x, N, dim=1)  # [B, N * N, C]
+    x2 = x.repeat(1, N, 1)  # [B, N * N, C]
+    dis = torch.norm(x1 - x2, dim=-1)  # [B, N * N]
+    dis = dis.reshape(B, N, N)  # [B, N, N]
     dis = dis.detach()
 
     return dis
@@ -74,11 +92,11 @@ class GCN(nn.Module):
         self.act = nn.ReLU()
 
     def forward(self, x, graph):
-        '''
+        """
         :param x: [B * T, N, C]
         :param graph: [B * T, N, N]
         :return: [B * T, N, C]
-        '''
+        """
         B, N = x.shape[0], x.shape[1]
         graph = GCN.process_graph(graph)
 
@@ -92,10 +110,10 @@ class GCN(nn.Module):
 
     @staticmethod
     def process_graph(graph):
-        '''
+        """
         :param graph: [B * T, N, N]
         :return: [B * T, N, N]
-        '''
+        """
         B, N = graph.shape[0], graph.shape[1]
         for i in range(B):
             g = graph[i]
@@ -104,7 +122,7 @@ class GCN(nn.Module):
 
             degree_matrix = torch.sum(g, dim=-1, keepdim=False)  # [N]
             degree_matrix = degree_matrix.pow(-1)
-            degree_matrix[degree_matrix == float("inf")] = 0.  # [N]
+            degree_matrix[degree_matrix == float("inf")] = 0.0  # [N]
 
             degree_matrix = torch.diag(degree_matrix)  # [N, N]
 
@@ -113,6 +131,7 @@ class GCN(nn.Module):
             graph[i] = g
 
         return graph
+
 
 class PositionwiseFeedForward(nn.Module):
     def __init__(self, embed_size, hidden_size, drop_prob=0.1):
@@ -153,9 +172,11 @@ class ScaleDotProductAttention(nn.Module):
 
         return v, score
 
-class MultiHeadAttention(nn.Module):
 
-    def __init__(self, embed_size, n_head, qkv_same_dim=True, q_dim=None, k_dim=None, v_dim=None):
+class MultiHeadAttention(nn.Module):
+    def __init__(
+        self, embed_size, n_head, qkv_same_dim=True, q_dim=None, k_dim=None, v_dim=None
+    ):
         super(MultiHeadAttention, self).__init__()
         self.n_head = n_head
         self.attention = ScaleDotProductAttention()
@@ -174,7 +195,9 @@ class MultiHeadAttention(nn.Module):
         batch_size, length, embed_size = tensor.shape
 
         d_tensor = embed_size // self.n_head
-        tensor = tensor.view(batch_size, length, self.n_head, d_tensor).transpose(1, 2) # [B, H, T, C]
+        tensor = tensor.view(batch_size, length, self.n_head, d_tensor).transpose(
+            1, 2
+        )  # [B, H, T, C]
 
         return tensor
 
@@ -241,6 +264,7 @@ class Attention(nn.Module):
 
         return x
 
+
 class GCNTransformer(nn.Module):
     def __init__(self, hidden_size, forward_size, drop, n_head, device):
         super(GCNTransformer, self).__init__()
@@ -283,11 +307,18 @@ class GCNTransformer(nn.Module):
 
         return out
 
+
 class Transformer(nn.Module):
     def __init__(self, hidden_size, forward_size, n_layers, drop, n_head, device):
         super(Transformer, self).__init__()
         self.device = device
-        self.blocks = nn.ModuleList([Attention(hidden_size, forward_size, drop, n_head, device) for _ in range(n_layers)])
+        self.blocks = nn.ModuleList(
+            [
+                Attention(hidden_size, forward_size, drop, n_head, device)
+                for _ in range(n_layers)
+            ]
+        )
+
     def forward(self, q, k, v, masks=None):
         for block in self.blocks:
             q = block(q, k, v, masks)
@@ -296,7 +327,7 @@ class Transformer(nn.Module):
 
 
 class STAR(nn.Module):
-    def __init__(self, obs_space, config, output_size=None, device='cpu'):
+    def __init__(self, obs_space, config, output_size=None, device="cpu"):
         super(STAR, self).__init__()
         self.config = config
         self.device = device
@@ -309,65 +340,71 @@ class STAR(nn.Module):
         self.output_size = self.hidden_size if output_size is None else output_size
         self.is_recurrent = True
 
-        self.Temporal_Transformer = Transformer(self.hidden_size,
-                                             self.forward_size,
-                                             self.n_layers,
-                                             self.dropout,
-                                             self.n_head,
-                                             self.device)
+        self.Temporal_Transformer = Transformer(
+            self.hidden_size,
+            self.forward_size,
+            self.n_layers,
+            self.dropout,
+            self.n_head,
+            self.device,
+        )
 
-        self.gcn_trans = GCNTransformer(self.hidden_size,
-                                        self.forward_size,
-                                        self.dropout,
-                                        self.n_head,
-                                        self.device)
+        self.gcn_trans = GCNTransformer(
+            self.hidden_size, self.forward_size, self.dropout, self.n_head, self.device
+        )
 
-        self.Spatial_Transformer = Transformer(self.hidden_size,
-                                                   self.forward_size,
-                                                   self.n_layers,
-                                                   self.dropout,
-                                                   self.n_head,
-                                                   self.device)
+        self.Spatial_Transformer = Transformer(
+            self.hidden_size,
+            self.forward_size,
+            self.n_layers,
+            self.dropout,
+            self.n_head,
+            self.device,
+        )
 
-        self.Cross_Transformer = SpatialAttention(self.hidden_size,
-                                                  1,
-                                                  self.device)
+        self.Cross_Transformer = SpatialAttention(self.hidden_size, 1, self.device)
 
-        self.Fusion_Transformer = Transformer(2 * self.hidden_size,
-                                                   self.forward_size,
-                                                   self.n_layers,
-                                                   self.dropout,
-                                                   self.n_head,
-                                                   self.device)
+        self.Fusion_Transformer = Transformer(
+            2 * self.hidden_size,
+            self.forward_size,
+            self.n_layers,
+            self.dropout,
+            self.n_head,
+            self.device,
+        )
 
-        if self.config.trans.activation == 'Tanh':
+        if self.config.trans.activation == "Tanh":
             self.activation = nn.Tanh()
-        elif self.config.trans.activation == 'Sigmoid':
+        elif self.config.trans.activation == "Sigmoid":
             self.activation = nn.Sigmoid()
-        elif self.config.trans.activation == 'LeakyReLU':
+        elif self.config.trans.activation == "LeakyReLU":
             self.activation = nn.LeakyReLU()
         else:
             self.activation = nn.ReLU()
 
-        self.robot_node_embed = nn.Sequential(nn.Linear(7, 3),
-                                              self.activation,
-                                              nn.Linear(3, self.hidden_size))
+        self.robot_node_embed = nn.Sequential(
+            nn.Linear(7, 3), self.activation, nn.Linear(3, self.hidden_size)
+        )
         self.spatial_embed = nn.Linear(4, self.hidden_size)
         self.temporal_embed = nn.Linear(2, self.hidden_size)
         self.gcn_layer = nn.Linear(4, self.hidden_size)
         self.cross_layer = nn.Linear(2 * self.hidden_size, self.hidden_size)
         self.final_layer = nn.Linear(2 * self.hidden_size, self.hidden_size)
 
-        self.actor = nn.Sequential(nn.Linear(self.hidden_size, 8 * self.hidden_size),
-                                   nn.Tanh(),
-                                   nn.Linear(8 * self.hidden_size, self.output_size),
-                                   nn.Tanh())
+        self.actor = nn.Sequential(
+            nn.Linear(self.hidden_size, 8 * self.hidden_size),
+            nn.Tanh(),
+            nn.Linear(8 * self.hidden_size, self.output_size),
+            nn.Tanh(),
+        )
 
-        self.critic = nn.Sequential(nn.Linear(self.hidden_size, 8 * self.hidden_size),
-                                   nn.Tanh(),
-                                   nn.Linear(8 * self.hidden_size, self.hidden_size),
-                                   nn.Tanh(),
-                                   nn.Linear(self.hidden_size, 1))
+        self.critic = nn.Sequential(
+            nn.Linear(self.hidden_size, 8 * self.hidden_size),
+            nn.Tanh(),
+            nn.Linear(8 * self.hidden_size, self.hidden_size),
+            nn.Tanh(),
+            nn.Linear(self.hidden_size, 1),
+        )
 
         self._init_params()
 
@@ -384,12 +421,17 @@ class STAR(nn.Module):
         # masks [T * B, 1]
         # rnn_hxs is useless like many other parameters here, just for compatibility.
 
-        robot_node = obs['robot_node'] # [T * B(env), 1, 7]
-        spatial_edges_transformer = obs['spatial_edges_transformer'] # [T * B(env), N(agent_num), 4]
-        visible_masks = obs['visible_masks']  # [T * B(env), N(agent_num), 1]
-        robot_pos = obs['robot_pos'] # [T * B(env), 1, 4]
+        robot_node = obs["robot_node"]  # [T * B(env), 1, 7]
+        spatial_edges_transformer = obs[
+            "spatial_edges_transformer"
+        ]  # [T * B(env), N(agent_num), 4]
+        visible_masks = obs["visible_masks"]  # [T * B(env), N(agent_num), 1]
+        robot_pos = obs["robot_pos"]  # [T * B(env), 1, 4]
 
-        batch, human_num = spatial_edges_transformer.shape[0], spatial_edges_transformer.shape[1] - 1
+        batch, human_num = (
+            spatial_edges_transformer.shape[0],
+            spatial_edges_transformer.shape[1] - 1,
+        )
         if infer:
             seq_len = 1
             env_num = batch // seq_len
@@ -405,65 +447,79 @@ class STAR(nn.Module):
         visible_masks = _reshape(seq_len, env_num, visible_masks)  # [B, T, N]
         robot_pos = _reshape(seq_len, env_num, robot_pos)  # [B, T, 1, 4]
         masks = _reshape(seq_len, env_num, masks)  # [B, T, 1]
-        temporal_masks = get_masks(masks, device=masks.device) # [B, T, T]
+        temporal_masks = get_masks(masks, device=masks.device)  # [B, T, T]
 
+        robot_node_embedding = self.activation(
+            self.robot_node_embed(robot_node)
+        )  # [B, T, 1, C]
+        robot_node_embedding = robot_node_embedding.reshape(
+            -1, 1, self.hidden_size
+        )  # [B * T, 1, C]
 
-        robot_node_embedding = self.activation(self.robot_node_embed(robot_node))  # [B, T, 1, C]
-        robot_node_embedding = robot_node_embedding.reshape(-1, 1, self.hidden_size)  # [B * T, 1, C]
+        all_agent = torch.cat((robot_pos, spatial), dim=2).reshape(
+            env_num * seq_len, self.human_num + 2, -1
+        )  # [B * T, N, 4]
+        all_pos = all_agent[..., :2]  # [B * T, N, 2]
+        graph = get_adj_matrix(all_pos, device=all_pos.device)  # [B * T, N, N]
+        all_agent = self.activation(self.gcn_layer(all_agent))  # [B * T, N, C]
+        gcn_feat = self.gcn_trans(
+            all_agent, all_agent, all_agent, graph
+        )  # [B * T, N, C]
+        gcn_feat = gcn_feat[:, [0], :]  # [B * T, 1, C]
 
-        all_agent = torch.cat((robot_pos, spatial), dim=2).reshape(env_num * seq_len, self.human_num + 2, -1) # [B * T, N, 4]
-        all_pos = all_agent[..., :2] # [B * T, N, 2]
-        graph = get_adj_matrix(all_pos, device=all_pos.device) # [B * T, N, N]
-        all_agent = self.activation(self.gcn_layer(all_agent)) # [B * T, N, C]
-        gcn_feat = self.gcn_trans(all_agent, all_agent, all_agent, graph) # [B * T, N, C]
-        gcn_feat = gcn_feat[:, [0], :] # [B * T, 1, C]
-
-        spatial = spatial.permute(0, 2, 1, 3).reshape(env_num * (human_num + 1), seq_len, -1) # [B * N, T, 4]
-        temporal_masks_for_spatial = temporal_masks.reshape(env_num, 1, seq_len, -1) # [B, 1, T, T]
-
+        spatial = spatial.permute(0, 2, 1, 3).reshape(
+            env_num * (human_num + 1), seq_len, -1
+        )  # [B * N, T, 4]
+        temporal_masks_for_spatial = temporal_masks.reshape(
+            env_num, 1, seq_len, -1
+        )  # [B, 1, T, T]
 
         spatial_embedding = self.activation(self.spatial_embed(spatial))  # [B, T, C]
-        temporal_masks_for_spatial = torch.repeat_interleave(temporal_masks_for_spatial,
-                                                             human_num + 1,
-                                                             dim=1).reshape(env_num * (human_num + 1), seq_len, -1)  # [B * N, T, T]
+        temporal_masks_for_spatial = torch.repeat_interleave(
+            temporal_masks_for_spatial, human_num + 1, dim=1
+        ).reshape(
+            env_num * (human_num + 1), seq_len, -1
+        )  # [B * N, T, T]
 
+        spatial_feat = self.Spatial_Transformer(
+            spatial_embedding,
+            spatial_embedding,
+            spatial_embedding,
+            masks=temporal_masks_for_spatial,
+        )  # [B * N, T, C]
 
-        spatial_feat = self.Spatial_Transformer(spatial_embedding,
-                                                spatial_embedding,
-                                                spatial_embedding,
-                                                masks=temporal_masks_for_spatial) # [B * N, T, C]
+        cross_masks = visible_masks.reshape(env_num * seq_len, 1, -1)  # [B * T, 1, N]
+        spatial_feat = spatial_feat.reshape(
+            env_num, human_num + 1, seq_len, -1
+        ).permute(
+            0, 2, 1, 3
+        )  # [B, T, N, C]
+        spatial_feat = spatial_feat.reshape(
+            env_num * seq_len, human_num + 1, -1
+        )  # [B * T, N, C]
 
-        cross_masks = visible_masks.reshape(env_num * seq_len, 1, -1) # [B * T, 1, N]
-        spatial_feat = spatial_feat.reshape(env_num, human_num + 1, seq_len, -1).permute(0, 2, 1, 3) # [B, T, N, C]
-        spatial_feat = spatial_feat.reshape(env_num * seq_len, human_num + 1, -1)  # [B * T, N, C]
+        cross_feat = self.Cross_Transformer(
+            gcn_feat, spatial_feat, spatial_feat, masks=cross_masks
+        )  # [B * T, 1, C]
 
-        cross_feat = self.Cross_Transformer(gcn_feat,
-                                            spatial_feat,
-                                            spatial_feat,
-                                            masks=cross_masks) # [B * T, 1, C]
+        cross_feat = torch.cat((gcn_feat, cross_feat), dim=-1)  # [B * T, 1, 2 * C]
+        cross_feat = self.activation(self.cross_layer(cross_feat))  # [B * T, 1, C]
 
-        cross_feat = torch.cat((gcn_feat, cross_feat), dim=-1) # [B * T, 1, 2 * C]
-        cross_feat = self.activation(self.cross_layer(cross_feat)) # [B * T, 1, C]
+        fusion = torch.cat(
+            (robot_node_embedding, cross_feat), dim=-1
+        )  # [B * T, 1, 2 * C]
+        fusion = fusion.reshape(env_num, seq_len, -1)  # [B, T, 2 * C]
 
-        fusion = torch.cat((robot_node_embedding, cross_feat), dim=-1) # [B * T, 1, 2 * C]
-        fusion = fusion.reshape(env_num, seq_len, -1) # [B, T, 2 * C]
-
-        output_feat = self.Fusion_Transformer(fusion,
-                                             fusion,
-                                             fusion,
-                                             masks=temporal_masks) # [B, T, 2 * C]
+        output_feat = self.Fusion_Transformer(
+            fusion, fusion, fusion, masks=temporal_masks
+        )  # [B, T, 2 * C]
 
         output_feat = self.final_layer(output_feat)  # [B * T, C]
-        output_feat = output_feat.reshape(env_num, seq_len, -1).permute(1, 0, 2) # [T, B, C]
+        output_feat = output_feat.reshape(env_num, seq_len, -1).permute(
+            1, 0, 2
+        )  # [T, B, C]
 
-        actor_feat = self.actor(output_feat).reshape(-1, self.output_size) # [T * B, C]
-        critic_feat = self.critic(output_feat).reshape(-1, 1) # [T * B, 1]
+        actor_feat = self.actor(output_feat).reshape(-1, self.output_size)  # [T * B, C]
+        critic_feat = self.critic(output_feat).reshape(-1, 1)  # [T * B, 1]
 
         return critic_feat, actor_feat, rnn_hxs
-
-
-
-
-
-
-
