@@ -28,6 +28,7 @@ class SANNaviStarNode(Node):
 
         # ! PARAMS DECLARATION
         self.declare_parameter("v_pref", 0.4)
+        self.declare_parameter("w_pref", 1.0)
         self.declare_parameter("robot_radius", 0.3)
         self.declare_parameter("human_radius", 0.3)
         self.declare_parameter("robot_fov", 3.14)
@@ -37,7 +38,9 @@ class SANNaviStarNode(Node):
 
         # topics
         self.declare_parameter("goal_path_topic", "/solution_path")
-        self.declare_parameter("social_agents_topic", "/pedsim_simulator/simulated_agents")
+        self.declare_parameter(
+            "social_agents_topic", "/pedsim_simulator/simulated_agents"
+        )
         self.declare_parameter("odom_topic", "/odom")
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
 
@@ -52,6 +55,7 @@ class SANNaviStarNode(Node):
         self.robot_fov_ = self.get_parameter("robot_fov").value
         self.human_fov_ = self.get_parameter("human_fov").value
         self.v_pref_ = self.get_parameter("v_pref").value
+        self.w_pref_ = self.get_parameter("w_pref").value
 
         # goal
         self.global_goal_x_ = 0.0
@@ -138,6 +142,7 @@ class SANNaviStarNode(Node):
 
     def agent_states_callback(self, msg: AgentStates):
         self.max_human_num_ = len(msg.agent_states)
+        self.config.sim.human_num = self.max_human_num_
         self.agents_data_ = msg.agent_states
 
     def odom_callback(self, msg: Odometry):
@@ -163,7 +168,7 @@ class SANNaviStarNode(Node):
                         (pos.x - self.odom_data_.pose.pose.position.x) ** 2
                         + (pos.y - self.odom_data_.pose.pose.position.y) ** 2
                     )
-                    > 0.2
+                    > 0.6
                 ):
                     self.waypoints.append([pos.x, pos.y])
                 else:
@@ -427,6 +432,18 @@ class SANNaviStarNode(Node):
             cmd_vel = Twist()
             cmd_vel.linear.x = float(action[0][0])
             cmd_vel.angular.z = float(action[0][1])
+
+            if abs(cmd_vel.linear.x) > 2 * self.v_pref_:
+                if cmd_vel.linear.x < 0:
+                    cmd_vel.linear.x = -1 * self.v_pref_
+                else:
+                    cmd_vel.linear.x = self.v_pref_
+
+            if abs(cmd_vel.angular.z) > 2 * self.w_pref_:
+                if cmd_vel.angular.z < 0:
+                    cmd_vel.angular.z = -1 * self.w_pref_
+                else:
+                    cmd_vel.angular.z = self.w_pref_
 
             self.cmd_vel_pub_.publish(cmd_vel)
 
