@@ -26,16 +26,20 @@ def clip_action(action, low=None, high=None, clip_norm=False, max_norm=None):
 
     return action
 
+
 def check(input):
     output = torch.from_numpy(input) if type(input) == np.ndarray else input
     return output
+
 
 def check_reverse(input):
     output = _t2n(input) if type(input) == torch.Tensor else input
     return output
 
+
 def _t2n(x):
     return x.detach().cpu().numpy()
+
 
 # Necessary for my KFAC implementation.
 class AddBias(nn.Module):
@@ -56,7 +60,7 @@ def update_linear_schedule(optimizer, epoch, total_num_epochs, initial_lr):
     """Decreases the learning rate linearly"""
     lr = initial_lr - (initial_lr * (epoch / float(total_num_epochs)))
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group["lr"] = lr
 
 
 def init(module, weight_init, bias_init, gain=1):
@@ -69,9 +73,10 @@ def cleanup_log_dir(log_dir):
     try:
         os.makedirs(log_dir)
     except OSError:
-        files = glob.glob(os.path.join(log_dir, '*.monitor.csv'))
+        files = glob.glob(os.path.join(log_dir, "*.monitor.csv"))
         for f in files:
             os.remove(f)
+
 
 def tile_images(img_nhwc):
     """
@@ -86,12 +91,13 @@ def tile_images(img_nhwc):
     img_nhwc = np.asarray(img_nhwc)
     N, h, w, c = img_nhwc.shape
     H = int(np.ceil(np.sqrt(N)))
-    W = int(np.ceil(float(N)/H))
-    img_nhwc = np.array(list(img_nhwc) + [img_nhwc[0]*0 for _ in range(N, H*W)])
+    W = int(np.ceil(float(N) / H))
+    img_nhwc = np.array(list(img_nhwc) + [img_nhwc[0] * 0 for _ in range(N, H * W)])
     img_HWhwc = img_nhwc.reshape(H, W, h, w, c)
     img_HhWwc = img_HWhwc.transpose(0, 2, 1, 3, 4)
-    img_Hh_Ww_c = img_HhWwc.reshape(H*h, W*w, c)
+    img_Hh_Ww_c = img_HhWwc.reshape(H * h, W * w, c)
     return img_Hh_Ww_c
+
 
 def draw(robot_traj, robot_goal, human_traj, status, nav_time=None):
     import matplotlib.pyplot as plt
@@ -99,29 +105,53 @@ def draw(robot_traj, robot_goal, human_traj, status, nav_time=None):
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-    plt.rcParams['animation.ffmpeg_path'] = '/usr/bin/ffmpeg'
-    robot_color = 'orange'
-    goal_color = 'red'
-    human_color = ['yellow', 'green', 'blue', 'purple', 'pink', 'gray', 'brown', 'black', 'chocolate', 'indigo'] * 2
-    collision_color = 'red'
-    success_color = 'green'
-    timeout_color = 'goldenrod'
+    plt.rcParams["animation.ffmpeg_path"] = "/usr/bin/ffmpeg"
+    robot_color = "orange"
+    goal_color = "red"
+    human_color = [
+        "yellow",
+        "green",
+        "blue",
+        "purple",
+        "pink",
+        "gray",
+        "brown",
+        "black",
+        "chocolate",
+        "indigo",
+    ] * 2
+    collision_color = "red"
+    success_color = "green"
+    timeout_color = "goldenrod"
     fig = Figure(figsize=(10, 10), dpi=100)
     ax = fig.add_subplot()
     ax.set_xlim([-10, 10])
     ax.set_ylim([-10, 10])
     artists = []
 
-    robot_num, traj_len, human_num = robot_traj.shape[0], robot_traj.shape[1], human_traj.shape[0]
+    robot_num, traj_len, human_num = (
+        robot_traj.shape[0],
+        robot_traj.shape[1],
+        human_traj.shape[0],
+    )
 
     for i in range(robot_num):
         alpha = np.linspace(0.4, 1, traj_len)
         for j in range(traj_len):
-            c = plt.Circle(robot_traj[i, j], 0.1, fill=True, color=robot_color, alpha=alpha[j])
+            c = plt.Circle(
+                robot_traj[i, j], 0.1, fill=True, color=robot_color, alpha=alpha[j]
+            )
             ax.add_artist(c)
         plt.plot(robot_traj[i, :, 0], robot_traj[i, :, 1], color=robot_color)
-        goal = mlines.Line2D(robot_goal[i, [0]], robot_goal[i, [1]], color=goal_color, marker='*',
-                             linestyle='None', markersize=15, label='Goal')
+        goal = mlines.Line2D(
+            robot_goal[i, [0]],
+            robot_goal[i, [1]],
+            color=goal_color,
+            marker="*",
+            linestyle="None",
+            markersize=15,
+            label="Goal",
+        )
 
         ax.add_artist(goal)
         artists.append(goal)
@@ -130,31 +160,55 @@ def draw(robot_traj, robot_goal, human_traj, status, nav_time=None):
         traj_len = len(human_traj[i])
         alpha = np.linspace(0.4, 1, traj_len)
         for j in range(traj_len):
-            c = plt.Circle(human_traj[i, j], 0.2, fill=False, color=human_color[i], alpha=alpha[j])
+            c = plt.Circle(
+                human_traj[i, j], 0.2, fill=False, color=human_color[i], alpha=alpha[j]
+            )
             ax.add_artist(c)
 
-    r = mlines.Line2D([100], [100], color=robot_color, marker='.', linestyle='None',
-                      markersize=25, label='Robot')
-    g = mlines.Line2D([100], [100], color=goal_color, marker='*', linestyle='None',
-                      markersize=15, label='Goal')
-    h = mlines.Line2D([100], [100], color='black', marker='o', linestyle='None',
-                      markersize=15, markerfacecolor='white', label='Human')
-    ax.legend([r, g, h], ['Robot', 'Goal', 'Human'], fontsize=16)
+    r = mlines.Line2D(
+        [100],
+        [100],
+        color=robot_color,
+        marker=".",
+        linestyle="None",
+        markersize=25,
+        label="Robot",
+    )
+    g = mlines.Line2D(
+        [100],
+        [100],
+        color=goal_color,
+        marker="*",
+        linestyle="None",
+        markersize=15,
+        label="Goal",
+    )
+    h = mlines.Line2D(
+        [100],
+        [100],
+        color="black",
+        marker="o",
+        linestyle="None",
+        markersize=15,
+        markerfacecolor="white",
+        label="Human",
+    )
+    ax.legend([r, g, h], ["Robot", "Goal", "Human"], fontsize=16)
 
-
-    if status == 'Collision':
-        ax.text(0, 9, 'Collision', color=collision_color, fontsize=16)
-    elif status == 'Success':
-        ax.text(0, 9, 'Success', color=success_color, fontsize=16)
-        ax.text(0, 7, 'Nav Time: ' + str(nav_time) + 's', color=success_color, fontsize=16)
+    if status == "Collision":
+        ax.text(0, 9, "Collision", color=collision_color, fontsize=16)
+    elif status == "Success":
+        ax.text(0, 9, "Success", color=success_color, fontsize=16)
+        ax.text(
+            0, 7, "Nav Time: " + str(nav_time) + "s", color=success_color, fontsize=16
+        )
     else:
-        ax.text(0, 9, 'Timeout', color=timeout_color, fontsize=16)
+        ax.text(0, 9, "Timeout", color=timeout_color, fontsize=16)
 
     canvas = FigureCanvasAgg(fig)
     canvas.draw()
     s, (width, height) = canvas.print_to_buffer()
     img = np.frombuffer(s, np.uint8).reshape((height, width, 4))
-    plt.close('all')
+    plt.close("all")
 
     return img
-
