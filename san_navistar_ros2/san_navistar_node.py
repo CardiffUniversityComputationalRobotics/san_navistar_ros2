@@ -16,6 +16,7 @@ from esc_move_base_msgs.msg import Path2D
 import gym
 from launch_ros.substitutions import FindPackageShare
 from san_navistar_ros2.utils import check_reverse
+from std_msgs.msg import Bool
 
 
 class SANNaviStarNode(Node):
@@ -111,6 +112,7 @@ class SANNaviStarNode(Node):
 
         # ! PUBLISHERS
         self.cmd_vel_pub_ = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.goal_reached_pub_ = self.create_publisher(Twist, "/goal_reached", 10)
 
         # ! INITIALISE MODEL
 
@@ -153,6 +155,17 @@ class SANNaviStarNode(Node):
         self.global_goal_y_ = msg.pose.position.y
         self.goal_available_ = True
 
+        if (
+            math.sqrt(
+                (self.global_goal_x_ - self.odom_data_.pose.pose.position.x) ** 2
+                + (self.global_goal_y_ - self.odom_data_.pose.pose.position.y) ** 2
+            )
+            < 0.5
+        ):
+            goal_reached = Bool()
+            goal_reached.data = True
+            self.goal_reached_pub_.publish(goal_reached)
+
     def global_plan_callback(self, msg: Path2D):
         self.waypoints = []
 
@@ -160,26 +173,21 @@ class SANNaviStarNode(Node):
 
             got_waypoints = msg.waypoints
 
-            got_waypoints.reverse()
-
             for pos in got_waypoints:
                 if (
                     math.sqrt(
                         (pos.x - self.odom_data_.pose.pose.position.x) ** 2
                         + (pos.y - self.odom_data_.pose.pose.position.y) ** 2
                     )
-                    > 0.6
+                    < 0.5
                 ):
                     self.waypoints.append([pos.x, pos.y])
                 else:
                     break
 
-            self.waypoints.reverse()
-        self.local_goal_x_ = self.waypoints[0][0]
-        self.local_goal_y_ = self.waypoints[0][1]
-
-        self.global_goal_x_ = self.waypoints[-1][0]
-        self.global_goal_y_ = self.waypoints[-1][1]
+            if len(self.waypoints) > 0:
+                self.local_goal_x_ = self.waypoints[-1][0]
+                self.local_goal_y_ = self.waypoints[-1][1]
 
         self.goal_available_ = True
 
