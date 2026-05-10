@@ -160,7 +160,7 @@ class SANNaviStarNode(Node):
                 (self.global_goal_x_ - self.odom_data_.pose.pose.position.x) ** 2
                 + (self.global_goal_y_ - self.odom_data_.pose.pose.position.y) ** 2
             )
-            < 0.5
+            < 0.7
         ):
             goal_reached = Bool()
             goal_reached.data = True
